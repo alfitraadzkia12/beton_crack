@@ -5,6 +5,8 @@ import pandas as pd
 from PIL import Image
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing import image
+import gdown
+import os
 
 # =====================
 # PAGE CONFIG
@@ -93,15 +95,25 @@ Klasifikasi Crack dan No Crack Menggunakan Deep Learning
 """, unsafe_allow_html=True)
 
 # =====================
-# LOAD MODEL
+# DOWNLOAD MODEL
 # =====================
 
+FILE_ID = "1s9SDPAdgWs2KkFipQ-tJL-zzP-DLIhFm"
+
 MODEL_PATH = "model_crack_beton.h5"
+
+if not os.path.exists(MODEL_PATH):
+    url = f"https://drive.google.com/uc?id={FILE_ID}"
+    gdown.download(url, MODEL_PATH, quiet=False)
+
+# =====================
+# LOAD MODEL
+# =====================
 
 model = load_model(MODEL_PATH)
 
 # =====================
-# CLASS
+# CLASS NAMES
 # =====================
 
 class_names = [
@@ -171,14 +183,11 @@ if uploaded_file:
         st.markdown("## 📊 Hasil Analisis")
 
         if pred_class == "Crack":
-
             st.markdown(
                 f"<div class='pred-box crack'>Prediksi : {pred_class}</div>",
                 unsafe_allow_html=True
             )
-
         else:
-
             st.markdown(
                 f"<div class='pred-box normal'>Prediksi : {pred_class}</div>",
                 unsafe_allow_html=True
@@ -200,16 +209,9 @@ if uploaded_file:
         st.write("")
 
         if pred_class == "Crack":
-
-            st.error(
-                "Terdeteksi indikasi retak pada permukaan beton."
-            )
-
+            st.error("Terdeteksi indikasi retak pada permukaan beton.")
         else:
-
-            st.success(
-                "Permukaan beton terdeteksi dalam kondisi baik."
-            )
+            st.success("Permukaan beton terdeteksi dalam kondisi baik.")
 
         st.write("")
 
@@ -221,14 +223,9 @@ if uploaded_file:
             [round(x*100,2) for x in probs]
         })
 
-        st.dataframe(
-            df,
-            use_container_width=True
-        )
+        st.dataframe(df, use_container_width=True)
 
-        st.bar_chart(
-            df.set_index("Kelas")
-        )
+        st.bar_chart(df.set_index("Kelas"))
 
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -247,8 +244,6 @@ st.markdown("---")
 
 st.markdown("""
 <center>
-
 Developed with ❤️ using TensorFlow & Streamlit
-
 </center>
 """, unsafe_allow_html=True)
