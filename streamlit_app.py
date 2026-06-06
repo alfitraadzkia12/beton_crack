@@ -40,7 +40,7 @@ except Exception as e:
     st.error(f"Gagal memuat model: {e}")
     st.stop()
 
-# 3. Fungsi Preprocessing Gambar (Sudah Diperbaiki)
+# 3. Fungsi Preprocessing Gambar
 def preprocess_image(image, target_size=(UKURAN_MODEL, UKURAN_MODEL)):
     # Pastikan format gambar adalah RGB
     if image.mode != "RGB":
@@ -52,7 +52,7 @@ def preprocess_image(image, target_size=(UKURAN_MODEL, UKURAN_MODEL)):
     # Mengubah gambar menjadi array dan menormalisasi (skala 0-1)
     image_array = np.array(image) / 255.0
     
-    # Menambahkan dimensi batch (dari [tinggi, lebar, saluran] menjadi [1, tinggi, lebar, saluran])
+    # Menambahkan dimensi batch
     image_array = np.expand_dims(image_array, axis=0)
     return image_array
 
@@ -85,7 +85,11 @@ if uploaded_file is not None:
             else:
                 st.success(f"✅ **Hasil: TAK RETAK** (Probabilitas: {(1-score)*100:.2f}%)")
         else:
-            class_names = ['Retak', 'Tak Retak'] 
+            # ====================================================================
+            # BAGIAN YANG DIUBAH: Urutan kelas dibalik menjadi Tak Retak terlebih dahulu
+            # ====================================================================
+            class_names = ['Tak Retak', 'Retak'] 
+            
             predicted_class_idx = np.argmax(predictions[0])
             confidence = predictions[0][predicted_class_idx]
             hasil = class_names[predicted_class_idx]
