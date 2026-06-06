@@ -30,8 +30,29 @@ def apply_keras_patch():
 apply_keras_patch()
 # ----------------------------------
 
-# 1. Konfigurasi Halaman
-st.set_page_config(page_title="Prediksi Retak Beton", layout="centered", page_icon="🏗️")
+# 1. Konfigurasi Halaman (Diubah menjadi Wide agar lebih elegan)
+st.set_page_config(page_title="Prediksi Retak Beton", layout="wide", page_icon="🏗️")
+
+# --- CSS Kustom untuk mempercantik Tampilan ---
+st.markdown("""
+<style>
+    .main-title { font-size: 38px; font-weight: bold; color: #1E3A8A; text-align: center; margin-bottom: 5px;}
+    .sub-title { font-size: 18px; color: #6B7280; text-align: center; margin-bottom: 30px; }
+    div.stButton > button:first-child {
+        width: 100%;
+        background-color: #2563EB;
+        color: white;
+        border-radius: 8px;
+        border: none;
+        padding: 10px;
+        font-weight: bold;
+    }
+    div.stButton > button:hover {
+        background-color: #1D4ED8;
+        color: white;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # 2. Definisikan Kelas (Label)
 class_names = ['Retak', 'Tidak_Retak']
@@ -41,9 +62,7 @@ class_names = ['Retak', 'Tidak_Retak']
 def load_model():
     model_path = 'model_crack_beton.h5'
     
-    # Akan mengunduh jika file model belum ada
     if not os.path.exists(model_path):
-        # MENGGUNAKAN ID GOOGLE DRIVE YANG BARU
         file_id = '1yaUHZ5p6aSxFuRYduiQKMwWpIJwf-if3' 
         try:
             gdown.download(id=file_id, output=model_path, quiet=False)
@@ -52,7 +71,6 @@ def load_model():
             return None
         
     try:
-        # Load model AI
         model = tf.keras.models.load_model(model_path, compile=False)
         return model
     except Exception as e:
@@ -64,22 +82,17 @@ def prediksi_gambar(image_pil, model):
     img_height = 150
     img_width = 150
 
-    # Ubah ukuran gambar sesuai input model (150x150)
     img_resized = image_pil.resize((img_width, img_height))
     img_array = np.array(img_resized, dtype=np.float32)
     
-    # NORMALISASI: Sangat penting agar model tidak kebingungan 
-    # (Bagi 255.0 agar skala piksel menjadi 0 - 1)
+    # Penambahan normalisasi agar akurasi AI terjaga
     img_array = img_array / 255.0 
     
-    # Tambah dimensi batch (1, 150, 150, 3)
     img_array = np.expand_dims(img_array, axis=0)
 
-    # Lakukan prediksi
     predictions = model.predict(img_array)
     score = predictions[0]
 
-    # Logika deteksi untuk Binary & Categorical
     if len(class_names) == 2 and predictions.shape[-1] == 1:
         predicted_class_idx = 1 if score[0] >= 0.5 else 0
         konfidensi = score[0] if predicted_class_idx == 1 else 1 - score[0]
@@ -91,33 +104,44 @@ def prediksi_gambar(image_pil, model):
     hasil_prediksi = class_names[predicted_class_idx]
     return hasil_prediksi, konfidensi
 
-# 5. UI Streamlit
-st.title("🏗️ Deteksi Retak pada Beton")
-st.write("Unggah foto permukaan beton untuk mendeteksi apakah terdapat retakan atau tidak menggunakan model Artificial Intelligence.")
+# 5. UI Header
+st.markdown('<div class="main-title">🏗️ Sistem Deteksi Cerdas Retak Beton</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">Unggah foto permukaan beton untuk mendeteksi integritas strukturnya menggunakan AI.</div>', unsafe_allow_html=True)
 
-with st.spinner("Sedang menyiapkan model AI... (Memakan waktu sesaat untuk unduhan pertama)"):
+with st.spinner("Sedang menyiapkan model AI... (Memakan waktu sesaat untuk unduh awal)"):
     model_beton = load_model()
 
 if model_beton is None:
     st.stop()
 
-# 6. Fitur Upload Gambar
-uploaded_file = st.file_uploader("Pilih gambar beton Anda...", type=["jpg", "jpeg", "png"])
+st.divider() # Garis pembatas
 
-if uploaded_file is not None:
-    # Buka gambar dan pastikan formatnya RGB
-    image = Image.open(uploaded_file).convert('RGB')
-    st.image(image, caption="Gambar yang Anda unggah", use_container_width=True)
+# 6. Membagi Layar menjadi 2 Kolom (Kiri Upload, Kanan Hasil)
+col1, col2 = st.columns([1, 1.2])
+
+with col1:
+    st.markdown("### 📂 1. Input Gambar")
+    uploaded_file = st.file_uploader("Pilih atau tarik gambar beton Anda ke sini...", type=["jpg", "jpeg", "png"])
     
-    # Tombol untuk mengeksekusi prediksi
-    if st.button("Deteksi Gambar"):
-        with st.spinner("Sedang menganalisis gambar..."):
-            hasil, konfidensi = prediksi_gambar(image, model_beton)
-        
-        # Tampilkan Hasil
-        if hasil == 'Retak':
-            st.error(f"⚠️ **Hasil Prediksi:** Beton Terdeteksi **{hasil}**")
-            st.write(f"**Tingkat Keyakinan Model:** {konfidensi:.2f}%")
-        else:
-            st.success(f"✅ **Hasil Prediksi:** Beton Terdeteksi **{hasil.replace('_', ' ')}**")
-            st.write(f"**Tingkat Keyakinan Model:** {konfidensi:.2f}%")
+    if uploaded_file is not None:
+        image = Image.open(uploaded_file).convert('RGB')
+        st.image(image, caption="Pratinjau Gambar", use_container_width=True)
+
+with col2:
+    st.markdown("### 📊 2. Hasil Analisis AI")
+    if uploaded_file is not None:
+        if st.button("Mulai Deteksi Keretakan 🔍"):
+            with st.spinner("AI sedang memindai piksel gambar..."):
+                hasil, konfidensi = prediksi_gambar(image, model_beton)
+            
+            # Box Hasil yang lebih rapi
+            st.markdown("#### Kesimpulan:")
+            if hasil == 'Retak':
+                st.error(f"⚠️ **PERHATIAN: Permukaan Beton Terdeteksi RETAK**")
+                st.metric(label="Tingkat Keyakinan Model", value=f"{konfidensi:.2f}%", delta="- Butuh Perhatian", delta_color="inverse")
+            else:
+                st.success(f"✅ **AMAN: Permukaan Beton Terdeteksi {hasil.replace('_', ' ').upper()}**")
+                st.metric(label="Tingkat Keyakinan Model", value=f"{konfidensi:.2f}%", delta="Kondisi Baik")
+                
+    else:
+        st.info("👈 Silakan unggah gambar di panel sebelah kiri terlebih dahulu.")
