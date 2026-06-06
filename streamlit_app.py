@@ -1,249 +1,98 @@
 import streamlit as st
 import tensorflow as tf
-import numpy as np
-import pandas as pd
 from PIL import Image
-from tensorflow.keras.models import load_model
-from tensorflow.keras.preprocessing import image
-import gdown
+import numpy as np
 import os
+import gdown
 
-# =====================
-# PAGE CONFIG
-# =====================
-
+# 1. Konfigurasi Halaman Streamlit
 st.set_page_config(
-    page_title="Deteksi Retak Beton",
-    page_icon="🏗️",
-    layout="wide"
+    page_title="Deteksi Retak Beton (Crack Detection)",
+    layout="centered",
+    initial_sidebar_state="expanded"
 )
 
-# =====================
-# CSS
-# =====================
+# 2. Fungsi untuk Mengunduh Model dari Google Drive (Cached)
+@st.cache_resource
+def load_model_from_drive():
+    # ID File dari link Google Drive yang Anda berikan
+    file_id = '1s9SDPAdgWs2KkFipQ-tJL-zzP-DLIhFm'
+    url = f'https://drive.google.com/uc?id={file_id}'
+    
+    # Tempat penyimpanan sementara di server/lokal
+    output = 'model_crack_beton.h5'
+    
+    # Unduh file jika belum ada di direktori kerja
+    if not os.path.exists(output):
+        with st.spinner("Sedang mengunduh model dari Google Drive... Harap tunggu (ini hanya dilakukan sekali)."):
+            gdown.download(url, output, quiet=False)
+            
+    # Load model menggunakan TensorFlow Keras
+    model = tf.keras.models.load_model(output)
+    return model
 
-st.markdown("""
-<style>
+# Load model ke dalam aplikasi
+try:
+    model = load_model_from_drive()
+    st.success("Model berhasil dimuat!")
+except Exception as e:
+    st.error(f"Gagal memuat model: {e}")
+    st.stop()
 
-.stApp{
-background: linear-gradient(
-135deg,
-#0f172a,
-#1e293b,
-#0f172a
-);
-}
+# 3. Fungsi Preprocessing Gambar
+def preprocess_image(image, target_size=(224, 224)):
+    """
+    Sesuaikan 'target_size' dengan ukuran input dari model AI Anda 
+    (misal: 224x224, 150x150, atau 50x50).
+    """
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+    image = image.resize(target_size)
+    image_array = np.array(image) / 255.0  # Normalisasi jika model Anda melatih dengan skala 0-1
+    image_array = np.expand_dims(image_array, axis=0) # Tambah dimensi batch
+    return image_array
 
-.main-title{
-text-align:center;
-font-size:48px;
-font-weight:bold;
-color:white;
-}
+# 4. Antarmuka Pengguna (UI) Aplikasi
+st.title("🛡️ Sistem Deteksi Retak Beton")
+st.write("Unggah foto permukaan beton untuk melihat apakah terdapat keretakan.")
 
-.sub-title{
-text-align:center;
-color:#cbd5e1;
-font-size:18px;
-margin-bottom:30px;
-}
+uploaded_file = st.file_uploader("Pilih gambar...", type=["jpg", "jpeg", "png"])
 
-.card{
-background:#1e293b;
-padding:20px;
-border-radius:20px;
-box-shadow:0px 0px 20px rgba(0,0,0,0.3);
-}
-
-.result-card{
-background:#243447;
-padding:20px;
-border-radius:20px;
-}
-
-.pred-box{
-padding:15px;
-border-radius:12px;
-font-size:22px;
-font-weight:bold;
-color:white;
-}
-
-.crack{
-background:#b91c1c;
-}
-
-.normal{
-background:#15803d;
-}
-
-</style>
-""", unsafe_allow_html=True)
-
-# =====================
-# HEADER
-# =====================
-
-st.markdown("""
-<h1 class='main-title'>
-🏗️ Deteksi Retak Beton
-</h1>
-
-<p class='sub-title'>
-Klasifikasi Crack dan No Crack Menggunakan Deep Learning
-</p>
-""", unsafe_allow_html=True)
-
-# =====================
-# DOWNLOAD MODEL
-# =====================
-
-FILE_ID = "1s9SDPAdgWs2KkFipQ-tJL-zzP-DLIhFm"
-
-MODEL_PATH = "model_crack_beton.h5"
-
-if not os.path.exists(MODEL_PATH):
-    url = f"https://drive.google.com/uc?id={FILE_ID}"
-    gdown.download(url, MODEL_PATH, quiet=False)
-
-# =====================
-# LOAD MODEL
-# =====================
-
-model = load_model(MODEL_PATH)
-
-# =====================
-# CLASS NAMES
-# =====================
-
-class_names = [
-    "No Crack",
-    "Crack"
-]
-
-# =====================
-# PREDICT
-# =====================
-
-def predict_image(img):
-
-    img = img.resize((150,150))
-
-    img_array = image.img_to_array(img)
-
-    img_array = np.expand_dims(img_array, axis=0)
-
-    img_array = img_array / 255.0
-
-    pred = model.predict(img_array, verbose=0)
-
-    probs = tf.nn.softmax(pred[0]).numpy()
-
-    pred_idx = np.argmax(probs)
-
-    pred_class = class_names[pred_idx]
-
-    confidence = probs[pred_idx] * 100
-
-    return pred_class, confidence, probs
-
-# =====================
-# UPLOAD
-# =====================
-
-uploaded_file = st.file_uploader(
-    "📤 Upload Foto Beton",
-    type=["jpg","jpeg","png"]
-)
-
-if uploaded_file:
-
-    img = Image.open(uploaded_file).convert("RGB")
-
-    pred_class, confidence, probs = predict_image(img)
-
-    col1, col2 = st.columns([1.2,1])
-
-    with col1:
-
-        st.markdown("<div class='card'>", unsafe_allow_html=True)
-
-        st.image(
-            img,
-            caption="Gambar Beton",
-            use_container_width=True
-        )
-
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    with col2:
-
-        st.markdown("<div class='result-card'>", unsafe_allow_html=True)
-
-        st.markdown("## 📊 Hasil Analisis")
-
-        if pred_class == "Crack":
-            st.markdown(
-                f"<div class='pred-box crack'>Prediksi : {pred_class}</div>",
-                unsafe_allow_html=True
-            )
+if uploaded_file is not None:
+    # Menampilkan gambar yang diunggah
+    image = Image.open(uploaded_file)
+    st.image(image, caption="Gambar yang diunggah", use_container_width=True)
+    
+    st.write("---")
+    st.write("🔄 Sedang memproses klasifikasi...")
+    
+    # Preprocessing (Sesuaikan target_size dengan arsitektur model Anda)
+    processed_image = preprocess_image(image, target_size=(224, 224))
+    
+    # Melakukan Prediksi
+    predictions = model.predict(processed_image)
+    
+    # 5. Logika Output Hasil Prediksi
+    # Catatan: Sesuaikan logika di bawah ini dengan output layer model Anda (Binary atau Categorical)
+    
+    # JIKA MODEL ADALAH BINARY (Menggunakan aktivasi Sigmoid, output berupa 1 nilai probabilitas)
+    if predictions.shape[1] == 1:
+        score = predictions[0][0]
+        # Misal: mendekati 1 berarti Retak, mendekati 0 berarti Tak Retak (atau sebaliknya)
+        if score > 0.5:
+            st.error(f"⚠️ **Hasil: RETAK** (Probabilitas: {score*100:.2f}%)")
         else:
-            st.markdown(
-                f"<div class='pred-box normal'>Prediksi : {pred_class}</div>",
-                unsafe_allow_html=True
-            )
-
-        st.write("")
-
-        st.markdown(
-            f"""
-            <h2 style='color:#38bdf8'>
-            Confidence : {confidence:.2f}%
-            </h2>
-            """,
-            unsafe_allow_html=True
-        )
-
-        st.progress(int(confidence))
-
-        st.write("")
-
-        if pred_class == "Crack":
-            st.error("Terdeteksi indikasi retak pada permukaan beton.")
+            st.success(f"✅ **Hasil: TAK RETAK** (Probabilitas: {(1-score)*100:.2f}%)")
+            
+    # JIKA MODEL ADALAH CATEGORICAL (Menggunakan aktivasi Softmax, output berupa array kelas)
+    else:
+        class_names = ['Retak', 'Tak Retak'] # Urutkan sesuai index labeling pada saat training
+        predicted_class_idx = np.argmax(predictions[0])
+        confidence = predictions[0][predicted_class_idx]
+        
+        hasil = class_names[predicted_class_idx]
+        
+        if hasil == 'Retak':
+            st.error(f"⚠️ **Hasil: RETAK** (Tingkat Keyakinan: {confidence*100:.2f}%)")
         else:
-            st.success("Permukaan beton terdeteksi dalam kondisi baik.")
-
-        st.write("")
-
-        st.markdown("### 📋 Probabilitas Semua Kelas")
-
-        df = pd.DataFrame({
-            "Kelas": class_names,
-            "Probabilitas (%)":
-            [round(x*100,2) for x in probs]
-        })
-
-        st.dataframe(df, use_container_width=True)
-
-        st.bar_chart(df.set_index("Kelas"))
-
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    st.write("")
-
-    st.markdown(f"""
-    ### 🔎 Kesimpulan
-
-    Berdasarkan hasil analisis citra beton menggunakan model Deep Learning,
-    sistem mengklasifikasikan gambar ke kategori **{pred_class}**
-    dengan tingkat keyakinan **{confidence:.2f}%**.
-    """)
-
-st.write("")
-st.markdown("---")
-
-st.markdown("""
-<center>
-Developed with ❤️ using TensorFlow & Streamlit
-</center>
-""", unsafe_allow_html=True)
+            st.success(f"✅ **Hasil: TAK RETAK** (Tingkat Keyakinan: {confidence*100:.2f}%)")
