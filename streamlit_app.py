@@ -117,8 +117,8 @@ model = load_model(MODEL_PATH)
 # =====================
 
 class_names = [
-    "Crack",
-    "No Crack"
+    "No Crack",
+    "Crack"
 ]
 
 # =====================
