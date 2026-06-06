@@ -1,6 +1,8 @@
 streamlit
 tensorflow
 numpy
-pillow
 pandas
+pillow
 matplotlib
+gdown
+h5py
