@@ -1,104 +1,123 @@
 import streamlit as st
 import tensorflow as tf
-from PIL import Image
 import numpy as np
+from PIL import Image
 import os
 import gdown
 
-# ====================================================================
-# PENTING: Ganti angka di bawah ini sesuai dengan ukuran input model Anda!
-# Contoh: 150 jika model Anda pakai 150x150, atau 50 jika 50x50.
-UKURAN_MODEL = 150  
-# ====================================================================
+# --- PATCH BYPASS ERROR KERAS 3 ---
+# Memaksa Keras untuk mengabaikan parameter 'quantization_config' yang bikin error
+def apply_keras_patch():
+    layer_classes = [
+        tf.keras.layers.Dense, 
+        tf.keras.layers.Conv2D, 
+        tf.keras.layers.MaxPooling2D, 
+        tf.keras.layers.Flatten, 
+        tf.keras.layers.Dropout
+    ]
+    for layer_cls in layer_classes:
+        try:
+            orig_from_config = layer_cls.from_config
+            def make_patched_from_config(orig_func):
+                def patched(cls, config):
+                    config.pop('quantization_config', None)
+                    return orig_func(config)
+                return classmethod(patched)
+            layer_cls.from_config = make_patched_from_config(orig_from_config)
+        except Exception:
+            pass
 
-# 1. Konfigurasi Halaman Streamlit
-st.set_page_config(
-    page_title="Deteksi Retak Beton (Crack Detection)",
-    layout="centered",
-    initial_sidebar_state="expanded"
-)
+apply_keras_patch()
+# ----------------------------------
 
-# 2. Fungsi untuk Mengunduh Model dari Google Drive (Cached)
+# 1. Konfigurasi Halaman
+st.set_page_config(page_title="Prediksi Retak Beton", layout="centered", page_icon="🏗️")
+
+# 2. Definisikan Kelas (Label) - Urutan yang benar sesuai awal
+class_names = ['Retak', 'Tidak_Retak']
+
+# 3. Fungsi untuk Memuat Model
 @st.cache_resource
-def load_model_from_drive():
-    file_id = '1s9SDPAdgWs2KkFipQ-tJL-zzP-DLIhFm'
-    url = f'https://drive.google.com/uc?id={file_id}'
-    output = 'model_crack_beton.h5'
+def load_model():
+    model_path = 'model_crack_beton.h5'
     
-    if not os.path.exists(output):
-        with st.spinner("Sedang mengunduh model dari Google Drive... Harap tunggu (ini hanya dilakukan sekali)."):
-            gdown.download(url, output, quiet=False)
-            
-    model = tf.keras.models.load_model(output)
-    return model
+    # Akan mengunduh jika file model belum ada
+    if not os.path.exists(model_path):
+        # MENGGUNAKAN ID GOOGLE DRIVE YANG BARU
+        file_id = '1yaUHZ5p6aSxFuRYduiQKMwWpIJwf-if3' 
+        try:
+            gdown.download(id=file_id, output=model_path, quiet=False)
+        except Exception as e:
+            st.error(f"Gagal mengunduh model dari GDrive: {e}")
+            return None
+        
+    try:
+        # Load model AI
+        model = tf.keras.models.load_model(model_path, compile=False)
+        return model
+    except Exception as e:
+        st.error(f"Gagal memuat model. Detail: {e}")
+        return None
 
-# Load model ke dalam aplikasi
-try:
-    model = load_model_from_drive()
-    st.success("Model berhasil dimuat!")
-except Exception as e:
-    st.error(f"Gagal memuat model: {e}")
+# 4. Fungsi untuk Memprediksi Gambar
+def prediksi_gambar(image_pil, model):
+    img_height = 150
+    img_width = 150
+
+    # Ubah ukuran gambar sesuai input model (150x150)
+    img_resized = image_pil.resize((img_width, img_height))
+    img_array = np.array(img_resized, dtype=np.float32)
+    
+    # NORMALISASI: Sangat penting agar model tidak kebingungan 
+    # (Bagi 255.0 agar skala piksel menjadi 0 - 1)
+    img_array = img_array / 255.0 
+    
+    # Tambah dimensi batch (1, 150, 150, 3)
+    img_array = np.expand_dims(img_array, axis=0)
+
+    # Lakukan prediksi
+    predictions = model.predict(img_array)
+    score = predictions[0]
+
+    # Logika deteksi untuk Binary & Categorical
+    if len(class_names) == 2 and predictions.shape[-1] == 1:
+        predicted_class_idx = 1 if score[0] >= 0.5 else 0
+        konfidensi = score[0] if predicted_class_idx == 1 else 1 - score[0]
+        konfidensi = konfidensi * 100
+    else:
+        predicted_class_idx = np.argmax(score)
+        konfidensi = np.max(score) * 100
+
+    hasil_prediksi = class_names[predicted_class_idx]
+    return hasil_prediksi, konfidensi
+
+# 5. UI Streamlit
+st.title("🏗️ Deteksi Retak pada Beton")
+st.write("Unggah foto permukaan beton untuk mendeteksi apakah terdapat retakan atau tidak menggunakan model Artificial Intelligence.")
+
+with st.spinner("Sedang menyiapkan model AI... (Memakan waktu sesaat untuk unduhan pertama)"):
+    model_beton = load_model()
+
+if model_beton is None:
     st.stop()
 
-# 3. Fungsi Preprocessing Gambar
-def preprocess_image(image, target_size=(UKURAN_MODEL, UKURAN_MODEL)):
-    # Pastikan format gambar adalah RGB
-    if image.mode != "RGB":
-        image = image.convert("RGB")
-    
-    # Ubah ukuran gambar sesuai kebutuhan model Anda
-    image = image.resize(target_size)
-    
-    # Mengubah gambar menjadi array dan menormalisasi (skala 0-1)
-    image_array = np.array(image) / 255.0
-    
-    # Menambahkan dimensi batch
-    image_array = np.expand_dims(image_array, axis=0)
-    return image_array
-
-# 4. Antarmuka Pengguna (UI) Aplikasi
-st.title("🛡️ Sistem Deteksi Retak Beton")
-st.write("Unggah foto permukaan beton untuk melihat apakah terdapat keretakan.")
-
-uploaded_file = st.file_uploader("Pilih gambar...", type=["jpg", "jpeg", "png"])
+# 6. Fitur Upload Gambar
+uploaded_file = st.file_uploader("Pilih gambar beton Anda...", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
-    # Menampilkan gambar yang diunggah
-    image = Image.open(uploaded_file)
-    st.image(image, caption="Gambar yang diunggah", use_container_width=True)
+    # Buka gambar dan pastikan formatnya RGB (agar tidak error kalau inputnya PNG transparan)
+    image = Image.open(uploaded_file).convert('RGB')
+    st.image(image, caption="Gambar yang Anda unggah", use_container_width=True)
     
-    st.write("---")
-    st.write("🔄 Sedang memproses klasifikasi...")
-    
-    # Memproses gambar dengan ukuran yang benar
-    processed_image = preprocess_image(image, target_size=(UKURAN_MODEL, UKURAN_MODEL))
-    
-    # Melakukan Prediksi
-    try:
-        predictions = model.predict(processed_image)
+    # Tombol untuk mengeksekusi prediksi
+    if st.button("Deteksi Gambar"):
+        with st.spinner("Sedang menganalisis gambar..."):
+            hasil, konfidensi = prediksi_gambar(image, model_beton)
         
-        # 5. Logika Output Hasil Prediksi
-        if predictions.shape[1] == 1:
-            score = predictions[0][0]
-            if score > 0.5:
-                st.error(f"⚠️ **Hasil: RETAK** (Probabilitas: {score*100:.2f}%)")
-            else:
-                st.success(f"✅ **Hasil: TAK RETAK** (Probabilitas: {(1-score)*100:.2f}%)")
+        # Tampilkan Hasil
+        if hasil == 'Retak':
+            st.error(f"⚠️ **Hasil Prediksi:** Beton Terdeteksi **{hasil}**")
+            st.write(f"**Tingkat Keyakinan Model:** {konfidensi:.2f}%")
         else:
-            # ====================================================================
-            # BAGIAN YANG DIUBAH: Urutan kelas dibalik menjadi Tak Retak terlebih dahulu
-            # ====================================================================
-            class_names = ['Tak Retak', 'Retak'] 
-            
-            predicted_class_idx = np.argmax(predictions[0])
-            confidence = predictions[0][predicted_class_idx]
-            hasil = class_names[predicted_class_idx]
-            
-            if hasil == 'Retak':
-                st.error(f"⚠️ **Hasil: RETAK** (Tingkat Keyakinan: {confidence*100:.2f}%)")
-            else:
-                st.success(f"✅ **Hasil: TAK RETAK** (Tingkat Keyakinan: {confidence*100:.2f}%)")
-                
-    except Exception as prediction_error:
-        st.error(f"Terjadi kesalahan saat prediksi: {prediction_error}")
-        st.info(f"Coba periksa kembali parameter UKURAN_MODEL. Saat ini disetel ke: {UKURAN_MODEL}x{UKURAN_MODEL}")
+            st.success(f"✅ **Hasil Prediksi:** Beton Terdeteksi **{hasil.replace('_', ' ')}**")
+            st.write(f"**Tingkat Keyakinan Model:** {konfidensi:.2f}%")
