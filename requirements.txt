@@ -1,8 +1,5 @@
 streamlit
 tensorflow
-numpy
-pandas
 pillow
-matplotlib
+numpy
 gdown
-h5py
